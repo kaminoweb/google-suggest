@@ -34,6 +34,23 @@ To fetch suggestions for the keyword "example" and save them to a file named "ou
 ```bash
 ./google-suggest.bsh example us 2 output.csv
 ```
+
+## Example Output
+
+```bash
+./google-suggest.bsh "best coffee" us 1
+best coffee,best coffee maker
+best coffee,best coffee near me
+best coffee,best coffee grinder
+best coffee,best coffee maker 2024
+best coffee,best coffee shops near me
+best coffee,best coffee
+best coffee,best coffee beans
+best coffee,best coffee mugs
+best coffee,best coffee machine for home
+best coffee,best coffee maker with grinder
+```
+
 ## Contributing
 
 Feel free to fork the repository and submit pull requests if you have improvements or additional detection methods to contribute.
