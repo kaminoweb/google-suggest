@@ -1,0 +1,111 @@
+#!/bin/bash
+
+# Usage: ./singlekeyword.bsh <seed_keyword> [country] [depth] [output_file]
+# Description: This script fetches Google search suggestions for a given seed keyword and saves them to a CSV file.
+# Author: KAMINOWEB INC
+# Version: 1.0
+# License: GNU General Public License v3.0
+
+# Function to display usage information
+usage() {
+  echo "Usage: $0 <seed_keyword> [country] [depth] [output_file]"
+  echo "  seed_keyword: The keyword to search for."
+  echo "  country: The country code (default: 'us')."
+  echo "  depth: The number of suggestion levels to fetch (default: 1)."
+  echo "  output_file: The name of the output CSV file (default: 'keywords.<timestamp>.<pid>.csv')."
+  exit 1
+}
+
+# Function to check if xmllint is installed
+check_xmllint() {
+  if ! command -v xmllint &> /dev/null; then
+    echo "Error: xmllint is not installed. Please install it to proceed."
+    exit 1
+  fi
+}
+
+# Function to URL-encode a string (replaces spaces and special characters with their URL-encoded equivalents)
+url_encode() {
+  local raw_string="$1"
+  echo -n "$raw_string" | jq -sRr @uri  # Using jq to URL encode
+}
+
+# Function to fetch Google search suggestions for a single keyword
+fetch_suggestions() {
+  local keyword=$1
+  local country=$2
+  sleep 2 
+  # URL-encode the keyword
+  encoded_keyword=$(url_encode "$keyword")
+
+  # Updated Firefox User-Agent string (Linux)
+  user_agent="Mozilla/5.0 (X11; Linux x86_64; rv:132.0) Gecko/20100101 Firefox/132.0"
+
+  # Fetch search suggestions from Google's autocomplete API (returns XML)
+  response=$(curl -s -A "$user_agent" "http://suggestqueries.google.com/complete/search?output=toolbar&hl=en&q=${encoded_keyword}&gl=${country}")
+
+  # Parse the XML response using xmllint or other XML parsers
+  # Extract "suggestion" elements and parse them
+  suggestions=$(echo "$response" | xmllint --xpath "//CompleteSuggestion/suggestion/@data" - 2>/dev/null)
+
+  # Output the suggestions
+  echo "$suggestions"
+}
+
+# Function to process a list of related keywords and fetch more suggestions recursively
+expand_keywords() {
+  local keyword=$1
+  local country=$2
+  local depth=$3
+  local output_file=$4
+
+  # Fetch the suggestions for the current keyword
+  suggestions=$(fetch_suggestions "$keyword" "$country")
+
+  # Output the suggestions in the format <keyword>,result
+  IFS=$'\n'  # Split suggestions into separate lines
+  for suggestion in $suggestions; do
+    # Extract the text between the quotes of data=""
+    extracted_suggestion=$(echo "$suggestion" | sed -n 's/.*data="\([^"]*\)".*/\1/p')
+    echo "$keyword,$extracted_suggestion" | tee -a "$output_file"  # Save and display the suggestion
+
+    # If we still have depth left, fetch suggestions for this new suggestion
+    if [ "$depth" -gt 1 ]; then
+      expand_keywords "$extracted_suggestion" "$country" $((depth - 1)) "$output_file"
+    fi
+  done
+}
+
+# Main function to start the process with the seed keyword
+process_keywords() {
+  local keyword=$1
+  local country=$2
+  local depth=$3
+  local output_file=$4
+
+  # Start expanding the keyword suggestions from the seed keyword
+  expand_keywords "$keyword" "$country" "$depth" "$output_file"
+}
+
+# Check if the correct number of arguments is provided
+if [ $# -lt 1 ]; then
+  usage
+fi
+
+# Check if xmllint is installed
+check_xmllint
+
+# Get the country from the last argument (default to "us" if not provided)
+country="${2:-us}"
+
+# Get the seed keyword from the first argument
+keyword="$1"
+
+# Get the depth from the second-to-last argument (default to 1 if not provided)
+depth="${3:-1}"
+
+# Get the output file name from the last argument (default to "keywords.<timestamp>.<pid>.csv" if not provided)
+output_file="${4:-keywords.$(date +%Y%m%d.%H%M%S).$$.csv}"
+
+# Start the keyword expansion process
+process_keywords "$keyword" "$country" "$depth" "$output_file"
