@@ -34,3 +34,19 @@ To fetch suggestions for the keyword "example" and save them to a file named "ou
 ```bash
 ./google-suggest.bsh example us 2 output.csv
 ```
+## Contributing
+
+Feel free to fork the repository and submit pull requests if you have improvements or additional detection methods to contribute.
+
+### Steps to Contribute
+
+1. Fork the repository.
+2. Create a new branch for your feature or bug fix.
+3. Make your changes.
+4. Commit your changes and push to your fork.
+5. Submit a pull request.
+
+## License
+
+This project is licensed under the **GNU General Public License v3.0**. See the [LICENSE](LICENSE) file for details.
+
