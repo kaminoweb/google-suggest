@@ -1,5 +1,4 @@
 # Google Suggest
-# Google Suggest
 
 This project is a Bash script that fetches Google search suggestions for a given seed keyword and saves them to a CSV file.
 
@@ -34,5 +33,4 @@ This script utilizes Google’s autocomplete API to fetch search suggestions bas
 To fetch suggestions for the keyword "example" and save them to a file named "output.csv":
 ```bash
 ./google-suggest.bsh example us 2 output.csv
-```
 ```
