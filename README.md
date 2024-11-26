@@ -1,1 +1,1 @@
-# google-suggest
+# Google Suggest
