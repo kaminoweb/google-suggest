@@ -38,7 +38,7 @@ To fetch suggestions for the keyword "example" and save them to a file named "ou
 ## Example Output
 
 ```bash
-./google-suggest.bsh "best coffee" us 1
+./google-suggest.bsh "best coffee" us 1 output.csv
 best coffee,best coffee maker
 best coffee,best coffee near me
 best coffee,best coffee grinder
