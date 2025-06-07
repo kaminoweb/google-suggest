@@ -1,25 +1,48 @@
 #!/bin/bash
+set -euo pipefail # Exit on error, treat unset variables as error, pipefail
 
-# Usage: ./singlekeyword.bsh <seed_keyword> [country] [depth] [output_file]
+# Usage: ./singlekeyword.bsh -k <seed_keyword> [-c <country>] [-d <depth>] [-o <output_file>]
 # Description: This script fetches Google search suggestions for a given seed keyword and saves them to a CSV file.
 # Author: KAMINOWEB INC
 # Version: 1.0
 # License: GNU General Public License v3.0
 
+# --- Configuration Defaults ---
+DEFAULT_COUNTRY="us"
+DEFAULT_DEPTH=1
+DEFAULT_OUTPUT_FILE_PREFIX="keywords"
+
+# --- Global Variables (will be set by argument parsing) ---
+SEED_KEYWORD=""
+COUNTRY="$DEFAULT_COUNTRY"
+DEPTH="$DEFAULT_DEPTH"
+OUTPUT_FILE=""
+
+# --- Functions ---
+
 # Function to display usage information
 usage() {
-  echo "Usage: $0 <seed_keyword> [country] [depth] [output_file]"
-  echo "  seed_keyword: The keyword to search for."
-  echo "  country: The country code (default: 'us')."
-  echo "  depth: The number of suggestion levels to fetch (default: 1)."
-  echo "  output_file: The name of the output CSV file (default: 'keywords.<timestamp>.<pid>.csv')."
+  echo "Usage: $0 -k <seed_keyword> [-c <country>] [-d <depth>] [-o <output_file>]" >&2
+  echo "  -k <seed_keyword>: The keyword to search for (MANDATORY)." >&2
+  echo "  -c <country>: The country code (default: '$DEFAULT_COUNTRY')." >&2
+  echo "  -d <depth>: The number of suggestion levels to fetch (default: $DEFAULT_DEPTH)." >&2
+  echo "  -o <output_file>: The name of the output CSV file (default: '$DEFAULT_OUTPUT_FILE_PREFIX.<timestamp>.<pid>.csv')." >&2
+  echo "  -h: Display this help message." >&2
   exit 1
 }
 
-# Function to check if xmllint is installed
-check_xmllint() {
-  if ! command -v xmllint &> /dev/null; then
-    echo "Error: xmllint is not installed. Please install it to proceed."
+# Function to check if required commands are installed
+check_dependencies() {
+  local missing_deps=()
+  for cmd in curl xmllint jq; do
+    if ! command -v "$cmd" &> /dev/null; then
+      missing_deps+=("$cmd")
+    fi
+  done
+
+  if [ ${#missing_deps[@]} -gt 0 ]; then
+    echo "Error: The following required commands are not installed: ${missing_deps[*]}" >&2
+    echo "Please install them to proceed." >&2
     exit 1
   fi
 }
@@ -27,53 +50,87 @@ check_xmllint() {
 # Function to URL-encode a string (replaces spaces and special characters with their URL-encoded equivalents)
 url_encode() {
   local raw_string="$1"
-  echo -n "$raw_string" | jq -sRr @uri  # Using jq to URL encode
+  jq -sRr @uri <<< "$raw_string"
 }
 
 # Function to fetch Google search suggestions for a single keyword
 fetch_suggestions() {
   local keyword=$1
   local country=$2
-  sleep 2 
-  # URL-encode the keyword
+  local user_agents=( # Added more user agents for variety
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Safari/605.1.15"
+    "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0"
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+  )
+  local current_user_agent="${user_agents[$(( RANDOM % ${#user_agents[@]} ))]}"
+
+  echo "INFO: Sleeping for 2 seconds before fetching suggestions for '$keyword' (country: $country)..." >&2
+  sleep 2
+
+  local encoded_keyword
   encoded_keyword=$(url_encode "$keyword")
 
-  # Updated Firefox User-Agent string (Linux)
-  user_agent="Mozilla/5.0 (X11; Linux x86_64; rv:132.0) Gecko/20100101 Firefox/132.0"
+  local url="http://suggestqueries.google.com/complete/search?output=toolbar&hl=en&q=${encoded_keyword}&gl=${country}"
 
-  # Fetch search suggestions from Google's autocomplete API (returns XML)
-  response=$(curl -s -A "$user_agent" "http://suggestqueries.google.com/complete/search?output=toolbar&hl=en&q=${encoded_keyword}&gl=${country}")
+  echo "DEBUG: Fetching URL: $url with User-Agent: '$current_user_agent'" >&2
 
-  # Parse the XML response using xmllint or other XML parsers
-  # Extract "suggestion" elements and parse them
-  suggestions=$(echo "$response" | xmllint --xpath "//CompleteSuggestion/suggestion/@data" - 2>/dev/null)
+  local response
+  if ! response=$(curl -s -A "$current_user_agent" "$url"); then
+    echo "ERROR: curl failed to fetch suggestions for '$keyword'." >&2
+    return 1 # Indicate failure
+  fi
 
-  # Output the suggestions
+  if [ -z "$response" ]; then
+    echo "WARNING: Empty response received for keyword '$keyword'." >&2
+    return 1 # Indicate failure
+  fi
+
+  local suggestions
+  # Attempt to parse XML, sending errors to stderr for diagnostics
+  if ! suggestions=$(echo "$response" | xmllint --xpath "//CompleteSuggestion/suggestion/@data" - 2>/dev/null); then
+    echo "WARNING: xmllint failed to parse response for '$keyword'. Raw response (if any):" >&2
+    echo "$response" >&2
+    return 1 # Indicate failure
+  fi
+
   echo "$suggestions"
+  return 0 # Indicate success
 }
 
 # Function to process a list of related keywords and fetch more suggestions recursively
 expand_keywords() {
   local keyword=$1
   local country=$2
-  local depth=$3
+  local current_depth=$3
   local output_file=$4
 
-  # Fetch the suggestions for the current keyword
-  suggestions=$(fetch_suggestions "$keyword" "$country")
+  echo "INFO: Expanding keyword: '$keyword' (Depth: $current_depth)" >&2
 
-  # Output the suggestions in the format <keyword>,result
-  IFS=$'\n'  # Split suggestions into separate lines
-  for suggestion in $suggestions; do
+  local suggestions
+  if ! suggestions=$(fetch_suggestions "$keyword" "$country"); then
+    echo "WARNING: Could not fetch suggestions for '$keyword'. Skipping further expansion for this branch." >&2
+    return
+  fi
+
+  local IFS=$'\n' # Split suggestions into separate lines
+  local suggestion_count=0
+  for suggestion_line in $suggestions; do
     # Extract the text between the quotes of data=""
-    extracted_suggestion=$(echo "$suggestion" | sed -n 's/.*data="\([^"]*\)".*/\1/p')
-    echo "$keyword,$extracted_suggestion" | tee -a "$output_file"  # Save and display the suggestion
+    local extracted_suggestion
+    extracted_suggestion=$(echo "$suggestion_line" | sed -n 's/.*data="\([^"]*\)".*/\1/p')
 
-    # If we still have depth left, fetch suggestions for this new suggestion
-    if [ "$depth" -gt 1 ]; then
-      expand_keywords "$extracted_suggestion" "$country" $((depth - 1)) "$output_file"
+    if [ -n "$extracted_suggestion" ]; then
+        echo "$keyword,\"$extracted_suggestion\"" | tee -a "$output_file" # Quote extracted suggestion for CSV
+        suggestion_count=$((suggestion_count + 1))
+
+        # If we still have depth left, fetch suggestions for this new suggestion
+        if [ "$current_depth" -gt 1 ]; then
+          expand_keywords "$extracted_suggestion" "$country" $((current_depth - 1)) "$output_file"
+        fi
     fi
   done
+  echo "INFO: Found $suggestion_count suggestions for '$keyword'." >&2
 }
 
 # Main function to start the process with the seed keyword
@@ -83,29 +140,41 @@ process_keywords() {
   local depth=$3
   local output_file=$4
 
+  echo "INFO: Starting keyword expansion for seed: '$keyword' (Country: $country, Depth: $depth)" >&2
   # Start expanding the keyword suggestions from the seed keyword
   expand_keywords "$keyword" "$country" "$depth" "$output_file"
+  echo "INFO: Keyword expansion complete. Results saved to '$output_file'." >&2
 }
 
-# Check if the correct number of arguments is provided
-if [ $# -lt 1 ]; then
+# --- Main Script Execution ---
+
+# Check if required tools are installed
+check_dependencies
+
+# Parse arguments using getopts
+while getopts ":k:c:d:o:h" opt; do
+  case $opt in
+    k) SEED_KEYWORD="$OPTARG" ;;
+    c) COUNTRY="$OPTARG" ;;
+    d) DEPTH="$OPTARG" ;;
+    o) OUTPUT_FILE="$OPTARG" ;;
+    h) usage ;;
+    \?) echo "Invalid option: -$OPTARG" >&2; usage ;;
+    :) echo "Option -$OPTARG requires an argument." >&2; usage ;;
+  esac
+done
+shift $((OPTIND-1)) # Shift positional parameters to remove parsed options
+
+# Validate mandatory seed keyword
+if [ -z "$SEED_KEYWORD" ]; then
+  echo "Error: Seed keyword (-k) is mandatory." >&2
   usage
 fi
 
-# Check if xmllint is installed
-check_xmllint
-
-# Get the country from the last argument (default to "us" if not provided)
-country="${2:-us}"
-
-# Get the seed keyword from the first argument
-keyword="$1"
-
-# Get the depth from the second-to-last argument (default to 1 if not provided)
-depth="${3:-1}"
-
-# Get the output file name from the last argument (default to "keywords.<timestamp>.<pid>.csv" if not provided)
-output_file="${4:-keywords.$(date +%Y%m%d.%H%M%S).$$.csv}"
+# Set default output file if not provided
+if [ -z "$OUTPUT_FILE" ]; then
+  OUTPUT_FILE="${DEFAULT_OUTPUT_FILE_PREFIX}.$(date +%Y%m%d.%H%M%S).$$.csv"
+fi
 
 # Start the keyword expansion process
-process_keywords "$keyword" "$country" "$depth" "$output_file"
+process_keywords "$SEED_KEYWORD" "$COUNTRY" "$DEPTH" "$OUTPUT_FILE"
