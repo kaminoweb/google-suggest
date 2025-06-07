@@ -46,13 +46,13 @@ Before running the script, ensure you have the following commands installed on y
     
 2.  **Make the script executable:**
     ```bash
-    chmod +x singlekeyword.bsh
+    chmod +x google-suggest.bsh
     ```
 
 ## Usage
 
 ```
-./singlekeyword.bsh -k <seed_keyword> [-c <country>] [-d <depth>] [-o <output_file>]
+./google-suggest.bsh -k <seed_keyword> [-c <country>] [-d <depth>] [-o <output_file>]
 ```
 
 **Options:**
@@ -67,27 +67,27 @@ Before running the script, ensure you have the following commands installed on y
 
 1.  **Fetch direct suggestions for "marketing tools" in the US:**
     ```bash
-    ./singlekeyword.bsh -k "marketing tools"
+    ./google-suggest.bsh -k "marketing tools"
     ```
 
 2.  **Fetch direct suggestions for "buy shoes" in Germany:**
     ```bash
-    ./singlekeyword.bsh -k "buy shoes" -c de
+    ./google-suggest.bsh -k "buy shoes" -c de
     ```
 
 3.  **Fetch suggestions for "best coffee" up to 2 levels deep:**
     ```bash
-    ./singlekeyword.bsh -k "best coffee" -d 2
+    ./google-suggest.bsh -k "best coffee" -d 2
     ```
 
 4.  **Fetch suggestions for "travel planning" up to 3 levels deep, save to a custom file:**
     ```bash
-    ./singlekeyword.bsh -k "travel planning" -c us -d 3 -o travel_keywords.csv
+    ./google-suggest.bsh -k "travel planning" -c us -d 3 -o travel_keywords.csv
     ```
 
 5.  **Display help:**
     ```bash
-    ./singlekeyword.bsh -h
+    ./google-suggest.bsh -h
     ```
 
 ## Output Format
