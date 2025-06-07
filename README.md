@@ -40,11 +40,10 @@ Before running the script, ensure you have the following commands installed on y
 
 1.  **Clone the repository (or download the script):**
     ```bash
-    git clone https://github.com/your-username/google-suggestion-scraper.git
-    cd google-suggestion-scraper
+    git clone https://github.com/kaminoweb/google-suggest.git
+    cd google-suggest
     ```
-    (Replace `your-username/google-suggestion-scraper.git` with the actual repository URL if you host it)
-
+    
 2.  **Make the script executable:**
     ```bash
     chmod +x singlekeyword.bsh
